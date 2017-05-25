@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::ops::Deref;
+use std::rc::Rc;
 
 #[derive(Debug)]
 enum Scalar {
@@ -24,6 +26,7 @@ trait Column {
     fn mask(&self, &[bool]) -> Box<Column>;
     fn sort(&self, partial_sort: Option<Vec<usize>>) -> Vec<usize>;
     fn sorted_by(&mut self, ranks: &[usize]) -> Box<Column>;
+    fn join(&self, other: Box<Column>) -> Vec<usize>;
     fn clone(&self) -> Box<Column>;
     fn to_string(&self) -> String;
 }
@@ -283,7 +286,7 @@ impl Column for StrColumn {
 }
 
 struct Projection {
-    columns: HashMap<String, Box<Column>>,
+    columns: HashMap<String, Rc<Box<Column>>>,
     sort_cols: Vec<String>,
 }
 
@@ -299,7 +302,7 @@ impl Projection {
         if let Some(ranks) = ranks_opt {
             let sorted_columns = columns
                 .iter_mut()
-                .map(|(name, ref mut col)| (name.clone(), (*col).sorted_by(&ranks)))
+                .map(|(name, ref mut col)| (name.clone(), Rc::new((*col).sorted_by(&ranks))))
                 .collect();
             Projection {
                 columns: sorted_columns,
@@ -320,7 +323,7 @@ impl Projection {
     fn mask(&self, bitstring: &[bool]) -> Projection {
         let masked = self.columns
             .iter()
-            .map(|(name, col)| (name.clone(), col.mask(bitstring)))
+            .map(|(name, col)| (name.clone(), Rc::new(col.mask(bitstring))))
             .collect();
         Projection {
             columns: masked,
@@ -328,19 +331,30 @@ impl Projection {
         }
     }
 
-    fn project(&self, keep_cols: &[&str], sort_cols: &[&str]) -> Projection {
+    fn project(&self, keep_cols: &[&str]) -> Projection {
         let projected = self.columns
             .iter()
             .filter(|&(ref name, _)| keep_cols.contains(&name.as_str()))
-            .map(|(name, col)| (name.clone(), (*col).clone()))
+            .map(|(name, col)| (name.clone(), col.clone()))
             .collect();
-        Projection::new(projected,
-                        sort_cols.iter().map(|&s| String::from(s)).collect())
+        Projection {
+            columns: projected,
+            sort_cols: self.sort_cols.clone(),
+        }
+    }
+
+    fn sort(&self, sort_cols: &[&str]) -> Projection {
+        let cloned = self.columns
+            .iter()
+            .map(|(name, col)| (name.clone(), (*col.deref()).clone()))
+            .collect();
+        Projection::new(cloned, sort_cols.iter().map(|&s| String::from(s)).collect())
     }
 }
 
 impl fmt::Display for Projection {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "\n")?;
         for (name, column) in &self.columns {
             write!(f, "{}: {}\n", name, column.to_string())?
         }
@@ -363,6 +377,9 @@ fn main() {
     let masked = projection.mask(&projection.select("ints", &(Test::Equal, Scalar::Int(5))));
     println!("masked: {}", masked);
 
-    let projected = masked.project(&["strings"], &["strings"]);
+    let projected = masked.project(&["strings"]);
     println!("projected: {}", projected);
+
+    let sorted = projected.sort(&["strings"]);
+    println!("sorted: {}", sorted);
 }
