@@ -20,3 +20,9 @@ pub enum Test {
 }
 
 pub type Predicate = (Test, Scalar);
+
+#[derive(Debug)]
+pub enum Aggregation {
+    Count,
+    Sum,
+}

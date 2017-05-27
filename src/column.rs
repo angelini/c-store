@@ -1,6 +1,6 @@
 use std::cmp;
 use std::fmt;
-use types::{List, Predicate, Scalar, Test};
+use types::{Aggregation, List, Predicate, Scalar, Test};
 
 macro_rules! select_by_predicate {
     ( $items: expr, $predicate:expr, $scalar:path ) => {{
@@ -21,6 +21,7 @@ pub trait Column {
     fn is_sorted(&self) -> bool;
     fn join<'a>(&self, list: List<'a>) -> Vec<usize>;
     fn joined_by(&self, join_idxs: &[usize]) -> Box<Column>;
+    fn aggregate(&self, agg: &Aggregation) -> Scalar;
     fn clone(&self) -> Box<Column>;
     fn as_list<'a>(&'a self) -> List<'a>;
     fn to_string(&self) -> String;
@@ -152,6 +153,13 @@ impl Column for IntColumn {
         box IntColumn::new(joined, self.sorted)
     }
 
+    fn aggregate(&self, agg: &Aggregation) -> Scalar {
+        match *agg {
+            Aggregation::Count => Scalar::Int(self.items.len() as i64),
+            Aggregation::Sum => Scalar::Int(self.items.iter().fold(0, |acc, &v| acc + v))
+        }
+    }
+
     fn clone(&self) -> Box<Column> {
         box IntColumn::new(self.items.clone(), self.sorted)
     }
@@ -242,6 +250,13 @@ impl Column for FloatColumn {
             .map(|&join_idx| self.items[join_idx])
             .collect();
         box FloatColumn::new(joined, self.sorted)
+    }
+
+    fn aggregate(&self, agg: &Aggregation) -> Scalar {
+        match *agg {
+            Aggregation::Count => Scalar::Int(self.items.len() as i64),
+            Aggregation::Sum => Scalar::Float(self.items.iter().fold(0.0, |acc, &v| acc + v)),
+        }
     }
 
     fn clone(&self) -> Box<Column> {
@@ -402,6 +417,13 @@ impl Column for StrColumn {
 
     fn as_list<'a>(&'a self) -> List<'a> {
         List::Strs(&self.string, &self.offsets)
+    }
+
+    fn aggregate(&self, agg: &Aggregation) -> Scalar {
+        match *agg {
+            Aggregation::Count => Scalar::Int(self.offsets.len() as i64),
+            Aggregation::Sum => unimplemented!(),
+        }
     }
 
     fn clone(&self) -> Box<Column> {

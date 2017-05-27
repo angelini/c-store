@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::ops::Deref;
 use std::rc::Rc;
-use types::{Predicate, Scalar, Test};
+use types::{Aggregation, Predicate, Scalar, Test};
 
 // trace_macros!(true);
 
@@ -136,6 +136,17 @@ impl Projection {
             sort_cols: sort_cols,
         }
     }
+
+    fn aggregate(&self, aggs: &[(&str, Aggregation)]) -> Vec<Scalar> {
+        aggs.iter()
+            .map(|&(name, ref agg)| {
+                     self.columns
+                         .get(name)
+                         .expect(&format!("Column not found: {}", name))
+                         .aggregate(agg)
+                 })
+            .collect()
+    }
 }
 
 impl fmt::Display for Projection {
@@ -183,4 +194,11 @@ fn main() {
 
     let joined = projection.join(&join_projection, "ints", "join_ints");
     println!("joined: {}", joined);
+
+    let agg = joined.aggregate(&[
+        ("ints", Aggregation::Sum),
+        ("join_ints", Aggregation::Sum),
+        ("strings", Aggregation::Count),
+    ]);
+    println!("agg: {:?}", agg);
 }
